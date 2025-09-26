@@ -1,0 +1,17 @@
+{
+  "name": "seaart-daily-challenge",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^24.5.2"
+  },
+  "dependencies": {
+    "openai": "^5.23.0",
+    "puppeteer-core": "^24.22.3"
+  }
+}
