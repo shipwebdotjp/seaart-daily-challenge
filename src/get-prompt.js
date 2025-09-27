@@ -15,7 +15,7 @@ const OpenAI = require('openai');
  *
  * Throws on request failures or missing API key (when client not provided).
  */
-async function generatePrompt({ theme = null, description = null, client = null, model = 'gpt-5', maxOutputTokens = 16000 } = {}) {
+async function generatePrompt({ theme = null, description = null, client = null, model = 'gpt-5-mini', maxOutputTokens = 16000 } = {}) {
   if (!client) {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY not set. Provide a client or set OPENAI_API_KEY in the environment.');
@@ -26,8 +26,8 @@ async function generatePrompt({ theme = null, description = null, client = null,
   const schema = {
     type: "object",
     properties: {
-      title_jp: { type: "string", description: "作品タイトル（日本語・50文字以内）" },
-      description_jp: { type: "string", description: "作品解説（日本語・150文字以内）" },
+      title_jp: { type: "string", description: "作品タイトル（日本語・50文字以内）ありきたりのものではなく、独自性や創造性を重視してください。" },
+      description_jp: { type: "string", description: "作品解説（日本語・150文字以内）単なる作品の解説ではなく、何をイメージして作成したのか、内面的な描写や自分が特にこだわった部分を含めてください。" },
       prompt_en: { type: "string", description: "SeaArt 用 英語プロンプト（先頭に \"masterpiece, best quality,\" を含む）" }
     },
     required: ["title_jp","description_jp","prompt_en"],

@@ -4,6 +4,7 @@ const OpenAI = require('openai');
 const { fetchTheme } = require('./get-theme');
 const { generatePrompt } = require('./get-prompt');
 const { generateImage } = require('./generate-image');
+const { publishImage } = require('./publish-image');
 
 (async () => {
   if (!process.env.OPENAI_API_KEY) {
@@ -18,22 +19,49 @@ const { generateImage } = require('./generate-image');
     // Connect to remote Chrome (do not close the Chrome instance; we'll disconnect)
     browser = await puppeteer.connect({ browserURL });
 
-    // Fetch theme/description using the dedicated module (we pass the browser so it won't disconnect)
-    const { theme, description, debug } = await fetchTheme({ browser });
+    // Pages to process
+    const urls = [
+      'https://www.seaart.ai/ja/event-center/daily',
+      'https://www.seaart.ai/ja/event-center/realistic/'
+    ];
 
-    // Create OpenAI client and generate prompt/result
+    // Create OpenAI client once
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const generated = await generatePrompt({ theme, description, client });
-    //const generated = { title_jp: '美しい風景', description_jp: '山と日の出の写真', prompt_en: 'masterpiece, best quality, a beautiful landscape, mountains, sunrise, photorealistic, detailed, vibrant colors, 2:3' };
 
-    // Generate image using the dedicated module (we pass the browser so it won't disconnect)
-    const imageResult = await generateImage({ browser, prompt: generated.prompt_en });
-    //console.log('Image generation result:', imageResult);
-    // Output combined result
-    console.log(JSON.stringify({
-      result: { theme, description },
-      generated
-    }, null, 2));
+    const results = [];
+
+    for (const pageUrl of urls) {
+      // Fetch theme/description for this page (pass browser so it won't disconnect)
+      const { theme, description, debug } = await fetchTheme(pageUrl, { browser });
+      console.log(`Fetched theme/description for ${pageUrl}:`, { theme, description });
+      
+      if (!theme) {
+        console.warn(`No theme found for ${pageUrl}, skipping.`);
+        continue;
+      }
+      // Generate prompt/result using OpenAI
+      const generated = await generatePrompt({ theme, description, client });
+      console.log('Generated prompt/result:', generated);
+
+      // Generate image using the dedicated module (we pass the browser so it won't disconnect)
+      const imageResult = await generateImage({ browser, prompt: generated.prompt_en });
+
+      if (imageResult && imageResult.dataId) {
+        // Publish the image using the dedicated module
+        const publishResult = await publishImage(pageUrl, imageResult.dataId, generated.title_jp, generated.description_jp, { client });
+        imageResult.publishResult = publishResult;
+      }
+
+      results.push({
+        pageUrl,
+        result: { theme, description },
+        generated,
+        imageResult,
+      });
+    }
+
+    // Output combined results
+    console.log(JSON.stringify(results, null, 2));
   } catch (err) {
     console.error('Error:', err && err.message ? err.message : err);
     process.exitCode = 1;

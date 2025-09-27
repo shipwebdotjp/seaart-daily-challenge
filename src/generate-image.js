@@ -19,7 +19,7 @@ async function generateImage(opts = {}) {
   const {
     browser: providedBrowser = null,
     browserURL = 'http://127.0.0.1:9222',
-    pageUrl = 'https://www.seaart.ai/ja/create/image?id=f8172af6747ec762bcf847bd60fdf7cd&model_ver_no=2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
+    pageUrl = 'https://www.seaart.ai/ja/create/image?model_ver_no=2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
     timeout = 30000,
     waitForRenderMs = 2000,
     prompt = 'masterpiece, best quality, a beautiful landscape, mountains, sunrise, photorealistic, detailed, vibrant colors, 2:3',
@@ -27,6 +27,7 @@ async function generateImage(opts = {}) {
 
   let browser = providedBrowser;
   let createdBrowser = false;
+  let dataId = null;
   const sleep = milliseconds =>
     new Promise(resolve =>
       setTimeout(resolve, milliseconds)
@@ -38,7 +39,8 @@ async function generateImage(opts = {}) {
       createdBrowser = true;
     }
 
-    const page = await browser.newPage();
+    const page = await browser.pages().then(pages => pages[0] || browser.newPage());
+    await page.setViewport({ width: 1280, height: 800 });
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
 
     // Extra time for client-side rendering. Some remote puppeteer builds may not support sleep.
@@ -91,10 +93,10 @@ async function generateImage(opts = {}) {
 
       // find textarea (#easyGenerateInput) and set value to prompt
     const textareaDebug = await getElementDebug('#easyGenerateInput').catch(() => null);
-    console.log('textareaDebug:', JSON.stringify(textareaDebug, null, 2));
+    // console.log('textareaDebug:', JSON.stringify(textareaDebug, null, 2));
     const textarea = await page.$('#easyGenerateInput');
     if (textarea) {
-      console.log('Found textarea, attempting various input methods...');
+      // console.log('Found textarea, attempting various input methods...');
       try {
         await page.evaluate(selector => {
           const el = document.querySelector(selector);
@@ -119,7 +121,7 @@ async function generateImage(opts = {}) {
       }
       
       const afterDebug = await getElementDebug('#easyGenerateInput').catch(() => null);
-      console.log('afterDebug:', JSON.stringify(afterDebug, null, 2));
+      // console.log('afterDebug:', JSON.stringify(afterDebug, null, 2));
     } else {
       throw new Error('Prompt textarea not found on the page.');
     }
@@ -130,7 +132,44 @@ async function generateImage(opts = {}) {
       await generateBtn.click().catch(() => {});
     }
 
+    await page.waitForSelector('.process-operate-box-text', { visible: true, timeout: 5000 });
+    // console.log('処理が開始されました！');
+
+    await page.waitForSelector('.message-process-container', {
+      hidden: true,
+      timeout: 180000 // 最大180秒待機
+    });
+
+    console.log('画像生成が完了しました！');
+    await sleep(1000);
+
+    // 1. 最後の .c-easy-msg-item を取得
+    const items = await page.$$('.scroll-wrapper > .c-easy-msg-item');
+    const lastItem = items[items.length - 1];
+
+    if (lastItem) {
+      // 2. その子孫から目的の div を探す
+      const target = await lastItem.$('.msg-item-header-operate-bar-refresh-btn .icon-refresh-icon2');
+
+      if (target) {
+        // target parent
+        const parent = await target.getProperty('parentNode');
+        
+        // 3. data-id 属性を取得
+        // const dataId = await target.evaluate(el => el.getAttribute('data-id'));
+        dataId = await parent.evaluate(el => el.dataset.id); // dataset で取得もOK
+        //debug
+        // console.log('target debug:', await getElementDebug('.msg-item-header-operate-bar-refresh-btn'));
+        // console.log('取得した data-id:', dataId);
+      } else {
+        console.log('ターゲット要素が見つかりませんでした');
+      }
+    } else {
+      console.log('最後の .c-easy-msg-item が見つかりませんでした');
+    }
+
     return {
+      dataId
     };
   } catch (err) {
     // Propagate error to caller to decide how to handle
