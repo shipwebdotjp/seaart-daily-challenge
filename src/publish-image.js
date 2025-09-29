@@ -27,7 +27,7 @@ async function publishImage(pageUrl, imageId, title, description, opts = {}) {
 
         const page = await browser.pages().then(pages => pages[0] || browser.newPage());
         await page.setViewport({ width: 1280, height: 800 });
-        await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
+        await page.goto(pageUrl, { waitUntil: 'load', timeout });
 
         // Extra time for client-side rendering. Some remote puppeteer builds may not support page.waitForTimeout.
         await new Promise(resolve => setTimeout(resolve, waitForRenderMs));
@@ -140,30 +140,18 @@ async function publishImage(pageUrl, imageId, title, description, opts = {}) {
             try {
                 await page.focus('.publish-work .el-form-item__content > .el-input .el-input__inner').catch(() => { });
                 //await sleep(200);
-
-                //triple click to select existing content
-                await page.click('.publish-work .el-form-item__content > .el-input .el-input__inner', { clickCount: 3 }).catch(() => { });
-                await sleep(500);
-
-                await page.keyboard.press('Backspace').catch(() => { });
-
                 await sleep(500);
                 await page.keyboard.type(title, { delay: 20 }).catch(() => { });
             } catch (e) {
                 // swallow
             }
+        }else{
+            console.log('タイトル入力欄が見つかりません。');
         }
         const desc_input = await page.$('.publish-work .el-form-item__content > .el-textarea .el-textarea__inner');
         if (desc_input) {
             try {
                 await page.focus('.publish-work .el-form-item__content > .el-textarea .el-textarea__inner').catch(() => { });
-                //await sleep(200);
-
-                //triple click to select existing content
-                await page.click('.publish-work .el-form-item__content > .el-textarea .el-textarea__inner', { clickCount: 3 }).catch(() => { });
-                await sleep(500);
-
-                await page.keyboard.press('Backspace').catch(() => { });
 
                 await sleep(500);
                 await page.keyboard.type(description, { delay: 20 }).catch(() => { });

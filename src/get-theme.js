@@ -50,9 +50,9 @@ async function fetchTheme(pageUrl, opts = {}) {
       createdBrowser = true;
     }
 
-    const page = await browser.newPage();
+    const page = await browser.pages().then(pages => pages[0] || browser.newPage());
     await page.setViewport({ width: 1280, height: 800 });
-    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
+    await page.goto(pageUrl, { waitUntil: 'load', timeout });
 
     // Extra time for client-side rendering. Some remote puppeteer builds may not support page.waitForTimeout.
     await new Promise(resolve => setTimeout(resolve, waitForRenderMs));

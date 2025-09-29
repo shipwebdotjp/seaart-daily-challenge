@@ -2,7 +2,10 @@
   "name": "seaart-daily-challenge",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "start": "node ./src/index.js",
+    "test": "vitest run"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

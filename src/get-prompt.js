@@ -95,12 +95,12 @@ prompt_en は英語で出力し、必ず先頭に "masterpiece, best quality, ph
   // Debug logging to stderr to assist troubleshooting (non-fatal)
   try {
     console.error("OpenAI response status:", res && res.status ? res.status : null);
-    if (res && typeof res.output_text === 'string') {
-      console.error("OpenAI output_text (preview):", res.output_text.slice(0, 2000));
-    }
-    if (res && res.output_parsed) {
-      console.error("OpenAI output_parsed:", JSON.stringify(res.output_parsed, null, 2));
-    }
+    // if (res && typeof res.output_text === 'string') {
+    //   console.error("OpenAI output_text (preview):", res.output_text.slice(0, 2000));
+    // }
+    // if (res && res.output_parsed) {
+    //   console.error("OpenAI output_parsed:", JSON.stringify(res.output_parsed, null, 2));
+    // }
   } catch (e) {
     // ignore logging errors
   }

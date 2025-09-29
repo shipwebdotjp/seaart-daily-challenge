@@ -41,7 +41,7 @@ async function generateImage(opts = {}) {
 
     const page = await browser.pages().then(pages => pages[0] || browser.newPage());
     await page.setViewport({ width: 1280, height: 800 });
-    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout });
+    await page.goto(pageUrl, { waitUntil: 'load', timeout });
 
     // Extra time for client-side rendering. Some remote puppeteer builds may not support sleep.
     await new Promise(resolve => setTimeout(resolve, waitForRenderMs));
@@ -88,7 +88,25 @@ async function generateImage(opts = {}) {
     if (closeModal) {
       await page.click('.user-daily-close .el-icon-close').catch(() => {});
       // wait a bit for modal to close
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    const dialog = await page.$('.el-dialog__wrapper');
+    if (dialog) {
+      const closeBtn = await dialog.$('.content-right-close');
+      if (closeBtn) {
+        await closeBtn.click();
+        sleep(1000);
+      }
+    }
+
+    const postDialog = await page.$('.el-dialog__wrapper.activity-post-guide-dialog');
+    if (postDialog) {
+      const closeBtn = await postDialog.$('.button-item:not(.active)');
+      if (closeBtn) {
+        await closeBtn.click();
+        sleep(1000);
+      }
     }
 
       // find textarea (#easyGenerateInput) and set value to prompt
