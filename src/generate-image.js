@@ -109,9 +109,7 @@ async function generateImage(opts = {}) {
       }
     }
 
-      // find textarea (#easyGenerateInput) and set value to prompt
-    const textareaDebug = await getElementDebug('#easyGenerateInput').catch(() => null);
-    // console.log('textareaDebug:', JSON.stringify(textareaDebug, null, 2));
+    await page.waitForSelector('#easyGenerateInput', { visible: true, timeout: 5000 });
     const textarea = await page.$('#easyGenerateInput');
     if (textarea) {
       // console.log('Found textarea, attempting various input methods...');

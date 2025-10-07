@@ -162,7 +162,7 @@ async function publishImage(pageUrl, imageId, title, description, opts = {}) {
         // click publish button
         await page.click('.publish-work .confirm-btn');
         // wait for modal to close
-        await page.waitForSelector('.publish-work', { hidden: true, timeout: 10000 });
+        await page.waitForSelector('.publish-work', { hidden: true, timeout: 20000 });
         console.log('画像が正常に公開されました！');
     
 
