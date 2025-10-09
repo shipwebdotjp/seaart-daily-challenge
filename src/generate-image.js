@@ -19,7 +19,7 @@ async function generateImage(opts = {}) {
   const {
     browser: providedBrowser = null,
     browserURL = 'http://127.0.0.1:9222',
-    pageUrl = 'https://www.seaart.ai/ja/create/image?model_ver_no=2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
+    pageUrl = 'https://www.seaart.ai/ja/create/image?id=f8172af6747ec762bcf847bd60fdf7cd&model_ver_no=2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
     timeout = 30000,
     waitForRenderMs = 2000,
     prompt = 'masterpiece, best quality, a beautiful landscape, mountains, sunrise, photorealistic, detailed, vibrant colors, 2:3',
@@ -109,33 +109,148 @@ async function generateImage(opts = {}) {
       }
     }
 
-    await page.waitForSelector('#easyGenerateInput', { visible: true, timeout: 5000 });
+    // Robustly wait for the input and ensure it actually has focus before typing.
+    async function waitForAndEnsureFocus(selector, opts = {}) {
+      const {
+        perTryTimeout = 3000,
+        maxRetries = 6,
+        retryDelay = 300,
+      } = opts;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          await page.waitForSelector(selector, { visible: true, timeout: perTryTimeout });
+
+          // bring into view
+          await page.evaluate(sel => {
+            const e = document.querySelector(sel);
+            if (e && e.scrollIntoView) e.scrollIntoView({ block: 'center', inline: 'center' });
+          }, selector).catch(() => {});
+
+          // quick operability check inside page
+          const operable = await page.evaluate(sel => {
+            const el = document.querySelector(sel);
+            if (!el) return { ok: false, reason: 'not-found' };
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity || '1') === 0) {
+              return { ok: false, reason: 'not-visible' };
+            }
+            if (el.disabled || el.readOnly) return { ok: false, reason: 'disabled-or-readonly' };
+            if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return { ok: false, reason: 'aria-hidden' };
+            return { ok: true };
+          }, selector).catch(() => ({ ok: false, reason: 'evaluate-failed' }));
+
+          // If not operable, wait and retry
+          if (!operable.ok) {
+            // capture a little debug info on last attempt
+            if (attempt === maxRetries) {
+              const dbg = await getElementDebug(selector).catch(() => null);
+              throw new Error(`Element not operable: ${operable.reason} debug=${JSON.stringify(dbg)}`);
+            }
+            await new Promise(r => setTimeout(r, retryDelay));
+            continue;
+          }
+
+          // Try to focus via DOM, dispatch a click event to mimic user
+          await page.evaluate(sel => {
+            const el = document.querySelector(sel);
+            if (!el) return;
+            try {
+              el.focus && el.focus();
+            } catch (e) {}
+            try {
+              const ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+              el.dispatchEvent(ev);
+            } catch (e) {}
+          }, selector).catch(() => {});
+
+          // Wait shortly for document.activeElement to reflect focus
+          const focused = await page.waitForFunction(sel => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            if (document.activeElement === el) return true;
+            // if active element is a descendant (e.g. contenteditable inner), accept it
+            if (el.contains(document.activeElement)) return true;
+            return false;
+          }, { timeout: 800 }, selector).catch(() => null);
+
+          if (focused) return true;
+
+          // fallback: click at center coordinates
+          const box = await page.$eval(selector, el => {
+            const r = el.getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height };
+          }).catch(() => null);
+
+          if (box) {
+            await page.mouse.click(box.x, box.y).catch(() => {});
+            // small pause for focus to settle
+            await new Promise(r => setTimeout(r, 150));
+            // re-check
+            const focused2 = await page.evaluate(sel => {
+              const el = document.querySelector(sel);
+              return !!el && (document.activeElement === el || el.contains(document.activeElement));
+            }, selector).catch(() => false);
+            if (focused2) return true;
+          }
+
+          // not focused, wait then retry
+          await new Promise(r => setTimeout(r, retryDelay));
+        } catch (e) {
+          // on last attempt, rethrow with debug info
+          if (attempt === maxRetries) {
+            const dbg = await getElementDebug(selector).catch(() => null);
+            throw new Error(`Failed to focus ${selector} after ${maxRetries} attempts. lastError=${e && e.message} debug=${JSON.stringify(dbg)}`);
+          }
+          await new Promise(r => setTimeout(r, retryDelay));
+        }
+      }
+      throw new Error(`Failed to focus ${selector}`);
+    }
+    await sleep(1000);
+    await waitForAndEnsureFocus('#easyGenerateInput', { perTryTimeout: 3000, maxRetries: 6, retryDelay: 300 });
+    await sleep(1000);
+
     const textarea = await page.$('#easyGenerateInput');
     if (textarea) {
-      // console.log('Found textarea, attempting various input methods...');
+      // ensure selection cleared and input prepared
       try {
-        await page.evaluate(selector => {
-          const el = document.querySelector(selector);
-          if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
-        }, '#easyGenerateInput');
-      } catch (e) {}
-      // Try focus + keyboard typing
-      try {
-        await page.focus('#easyGenerateInput').catch(() => {});
-        //await sleep(200);
-
-        //triple click to select existing content
+        // triple click to select existing content then clear
         await page.click('#easyGenerateInput', { clickCount: 3 }).catch(() => {});
-        await sleep(500);
-
+        await sleep(200);
         await page.keyboard.press('Backspace').catch(() => {});
-        
-        await sleep(500);
-        await page.keyboard.type(prompt, { delay: 20 }).catch(() => {});
+        await sleep(200);
+
+        // Attempt typing; if that fails, fallback to setting value directly
+        let typed = false;
+        try {
+          await page.keyboard.type(prompt, { delay: 20 });
+          typed = true;
+        } catch (e) {
+          typed = false;
+        }
+
+        if (!typed) {
+          await page.evaluate((sel, val) => {
+            const el = document.querySelector(sel);
+            if (!el) return;
+            try {
+              if ('value' in el) {
+                el.value = val;
+              } else if (el.isContentEditable) {
+                el.innerText = val;
+              }
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (e) {}
+          }, '#easyGenerateInput', prompt);
+        }
       } catch (e) {
-        // swallow
+        // capture debug info but continue to attempt generate
+        const afterDebug = await getElementDebug('#easyGenerateInput').catch(() => null);
+        console.error('Input set error debug:', afterDebug);
       }
-      
+
       const afterDebug = await getElementDebug('#easyGenerateInput').catch(() => null);
       // console.log('afterDebug:', JSON.stringify(afterDebug, null, 2));
     } else {
