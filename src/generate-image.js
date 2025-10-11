@@ -113,8 +113,8 @@ async function generateImage(opts = {}) {
     async function waitForAndEnsureFocus(selector, opts = {}) {
       const {
         perTryTimeout = 3000,
-        maxRetries = 6,
-        retryDelay = 300,
+        maxRetries = 8, // 確実性を上げるためリトライ回数を増やす
+        retryDelay = 500, // リトライ遅延を少し増やす
       } = opts;
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -127,7 +127,7 @@ async function generateImage(opts = {}) {
             if (e && e.scrollIntoView) e.scrollIntoView({ block: 'center', inline: 'center' });
           }, selector).catch(() => {});
 
-          // quick operability check inside page
+          // extended operability check inside page
           const operable = await page.evaluate(sel => {
             const el = document.querySelector(sel);
             if (!el) return { ok: false, reason: 'not-found' };
@@ -137,12 +137,15 @@ async function generateImage(opts = {}) {
             }
             if (el.disabled || el.readOnly) return { ok: false, reason: 'disabled-or-readonly' };
             if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return { ok: false, reason: 'aria-hidden' };
-            return { ok: true };
+            // additional checks for focusability
+            if (style.pointerEvents === 'none') return { ok: false, reason: 'pointer-events-none' };
+            if (parseInt(style.zIndex || '0', 10) < 0) return { ok: false, reason: 'negative-zindex' };
+            return { ok: true, contenteditable: el.isContentEditable };
           }, selector).catch(() => ({ ok: false, reason: 'evaluate-failed' }));
 
           // If not operable, wait and retry
           if (!operable.ok) {
-            // capture a little debug info on last attempt
+            // capture debug info on last attempt
             if (attempt === maxRetries) {
               const dbg = await getElementDebug(selector).catch(() => null);
               throw new Error(`Element not operable: ${operable.reason} debug=${JSON.stringify(dbg)}`);
@@ -151,32 +154,49 @@ async function generateImage(opts = {}) {
             continue;
           }
 
-          // Try to focus via DOM, dispatch a click event to mimic user
+          // Multiple focus attempts in sequence
+          // First: try PuppETEer's page.focus (preferred in newer versions)
+          try {
+            await page.focus(selector);
+            await new Promise(r => setTimeout(r, 100)); // small pause
+          } catch (e) {}
+
+          // Second: click and dispatch events via evaluate
           await page.evaluate(sel => {
             const el = document.querySelector(sel);
             if (!el) return;
             try {
               el.focus && el.focus();
-            } catch (e) {}
-            try {
-              const ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-              el.dispatchEvent(ev);
+              // dispatch multiple events for better framework support
+              el.dispatchEvent(new Event('focus', { bubbles: true }));
+              el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+              el.dispatchEvent(new Event('click', { bubbles: true }));
             } catch (e) {}
           }, selector).catch(() => {});
 
-          // Wait shortly for document.activeElement to reflect focus
-          const focused = await page.waitForFunction(sel => {
+          // Third: if still not focused, try tab navigation
+          const focused1 = await page.waitForFunction(sel => {
             const el = document.querySelector(sel);
             if (!el) return false;
             if (document.activeElement === el) return true;
-            // if active element is a descendant (e.g. contenteditable inner), accept it
             if (el.contains(document.activeElement)) return true;
             return false;
-          }, { timeout: 800 }, selector).catch(() => null);
+          }, { timeout: 500 }, selector).catch(() => null);
 
-          if (focused) return true;
+          if (!focused1) {
+            // try tab to reach this element
+            await page.keyboard.press('Tab');
+            await new Promise(r => setTimeout(r, 100));
+            const focusedAfterTab = await page.evaluate(sel => {
+              const el = document.querySelector(sel);
+              return !!el && (document.activeElement === el || el.contains(document.activeElement));
+            }, selector).catch(() => false);
+            if (focusedAfterTab) return true;
+          } else {
+            return true;
+          }
 
-          // fallback: click at center coordinates
+          // Fallback: click at center coordinates
           const box = await page.$eval(selector, el => {
             const r = el.getBoundingClientRect();
             return { x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height };
@@ -184,9 +204,7 @@ async function generateImage(opts = {}) {
 
           if (box) {
             await page.mouse.click(box.x, box.y).catch(() => {});
-            // small pause for focus to settle
             await new Promise(r => setTimeout(r, 150));
-            // re-check
             const focused2 = await page.evaluate(sel => {
               const el = document.querySelector(sel);
               return !!el && (document.activeElement === el || el.contains(document.activeElement));
@@ -194,10 +212,9 @@ async function generateImage(opts = {}) {
             if (focused2) return true;
           }
 
-          // not focused, wait then retry
+          // not focused, retry
           await new Promise(r => setTimeout(r, retryDelay));
         } catch (e) {
-          // on last attempt, rethrow with debug info
           if (attempt === maxRetries) {
             const dbg = await getElementDebug(selector).catch(() => null);
             throw new Error(`Failed to focus ${selector} after ${maxRetries} attempts. lastError=${e && e.message} debug=${JSON.stringify(dbg)}`);
@@ -227,6 +244,7 @@ async function generateImage(opts = {}) {
           await page.keyboard.type(prompt, { delay: 20 });
           typed = true;
         } catch (e) {
+          console.warn('Typing failed, falling back to value setting:', e.message);
           typed = false;
         }
 
@@ -240,10 +258,37 @@ async function generateImage(opts = {}) {
               } else if (el.isContentEditable) {
                 el.innerText = val;
               }
+              // dispatch multiple events to ensure reactivity in frameworks like React/Vue
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+              el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+            } catch (e) {}
+          }, '#easyGenerateInput', prompt);
+        }
+
+        // Verify that the input was set correctly
+        await sleep(500); // allow time for events to propagate
+        const inputValue = await page.evaluate(sel => {
+          const el = document.querySelector(sel);
+          return el ? (el.value || el.innerText || '').trim() : '';
+        }, '#easyGenerateInput');
+
+        if (inputValue !== prompt.trim()) {
+          console.warn(`Input verification failed. Expected: "${prompt}", Got: "${inputValue}"`);
+          // Retry set value once more
+          await page.evaluate((sel, val) => {
+            const el = document.querySelector(sel);
+            if (!el) return;
+            try {
+              if ('value' in el) el.value = val;
               el.dispatchEvent(new Event('input', { bubbles: true }));
               el.dispatchEvent(new Event('change', { bubbles: true }));
             } catch (e) {}
           }, '#easyGenerateInput', prompt);
+          await sleep(200); // wait after retry
+        } else {
+          console.log('Input value verified successfully.');
         }
       } catch (e) {
         // capture debug info but continue to attempt generate
@@ -274,8 +319,8 @@ async function generateImage(opts = {}) {
     console.log('画像生成が完了しました！');
     await sleep(1000);
 
-    // 1. 最後の .c-easy-msg-item を取得
-    const items = await page.$$('.scroll-wrapper > .c-easy-msg-item');
+    // 1. 最後の .viewport-item を取得
+    const items = await page.$$('.scroll-wrapper > .viewport-item');
     const lastItem = items[items.length - 1];
 
     if (lastItem) {
@@ -296,7 +341,7 @@ async function generateImage(opts = {}) {
         console.log('ターゲット要素が見つかりませんでした');
       }
     } else {
-      console.log('最後の .c-easy-msg-item が見つかりませんでした');
+      console.log('最後の .viewport-item が見つかりませんでした');
     }
 
     return {
