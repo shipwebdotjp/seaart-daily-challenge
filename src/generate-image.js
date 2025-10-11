@@ -41,6 +41,60 @@ async function generateImage(opts = {}) {
 
     const page = await browser.pages().then(pages => pages[0] || browser.newPage());
     await page.setViewport({ width: 1280, height: 800 });
+
+    // Helper: robustly scroll the `.scroll-wrapper` to bottom with multiple fallbacks.
+    // This handles ordinary scrollTop, element.scrollIntoView, staged scrolling (for virtualized lists),
+    // wheel event dispatch, and a final attempt to click a "go to bottom" button if present.
+    async function scrollWrapperToBottom(pageRef) {
+      try {
+        await pageRef.evaluate(async () => {
+          const el = document.querySelector('.scroll-wrapper');
+          if (!el) return;
+          // 1) direct set
+          try { el.scrollTop = el.scrollHeight; } catch (e) {}
+          // 2) scroll last item into view if present
+          try {
+            const items = Array.from(document.querySelectorAll('.scroll-wrapper > .viewport-item'));
+            if (items.length) items[items.length - 1].scrollIntoView({ block: 'end', behavior: 'auto' });
+          } catch (e) {}
+          // 3) staged scrolling to encourage virtualized renderers to materialize items
+          try {
+            const step = Math.max(200, Math.floor(el.clientHeight * 0.8));
+            for (let i = 0; i < 40 && (el.scrollTop + el.clientHeight < el.scrollHeight); i++) {
+              el.scrollTop = Math.min(el.scrollTop + step, el.scrollHeight);
+              // allow framework to render
+              // eslint-disable-next-line no-await-in-loop
+              await new Promise(r => setTimeout(r, 120));
+            }
+          } catch (e) {}
+          // 4) dispatch a wheel event as some apps listen to wheel/touch
+          try {
+            el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, bubbles: true, cancelable: true }));
+          } catch (e) {}
+        });
+        // small pause for UI updates
+        await pageRef.waitForTimeout(250);
+
+        // 5) fallback: show & click the "go to bottom" button if present
+        try {
+          // nudge a tiny bit so that the button may appear
+          await pageRef.$eval('.scroll-wrapper', el => { if (el) el.scrollTop = Math.min(10, el.scrollHeight); }).catch(() => {});
+          await pageRef.waitForTimeout(200);
+          const btn = await pageRef.$('.back-to-top .el-icon-caret-bottom');
+          if (btn) {
+            // ensure it's visible (best-effort) then click
+            await pageRef.evaluate(() => {
+              const b = document.querySelector('.back-to-top .el-icon-caret-bottom');
+              if (b) { b.style.display = 'block'; b.style.visibility = 'visible'; b.style.opacity = '1'; }
+            }).catch(() => {});
+            await pageRef.waitForTimeout(100);
+            await btn.click().catch(() => {});
+          }
+        } catch (e) {}
+      } catch (e) {
+        // swallow errors; scrolling is a best-effort utility
+      }
+    }
     await page.goto(pageUrl, { waitUntil: 'load', timeout });
 
     // Extra time for client-side rendering. Some remote puppeteer builds may not support sleep.
@@ -107,6 +161,14 @@ async function generateImage(opts = {}) {
         await closeBtn.click();
         sleep(1000);
       }
+    }
+    
+    await scrollWrapperToBottom(page);
+
+    const goToBottomBtn = await page.$('.back-to-top .el-icon-caret-bottom');
+    if (goToBottomBtn) {
+      await goToBottomBtn.click();
+      sleep(1000);
     }
 
     // Robustly wait for the input and ensure it actually has focus before typing.
@@ -309,7 +371,10 @@ async function generateImage(opts = {}) {
     }
 
     await page.waitForSelector('.process-operate-box-text', { visible: true, timeout: 5000 });
-    // console.log('処理が開始されました！');
+    console.log('画像生成が開始されました！');
+    // ページを一番下にスクロールして要素を表示させる
+    await scrollWrapperToBottom(page);
+    await sleep(1000);
 
     await page.waitForSelector('.message-process-container', {
       hidden: true,
@@ -317,6 +382,9 @@ async function generateImage(opts = {}) {
     });
 
     console.log('画像生成が完了しました！');
+    await sleep(1000);
+    // ページを一番下にスクロールして要素を表示させる
+    await scrollWrapperToBottom(page);
     await sleep(1000);
 
     // 1. 最後の .viewport-item を取得

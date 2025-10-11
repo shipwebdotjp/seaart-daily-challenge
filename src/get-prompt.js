@@ -15,7 +15,7 @@ const OpenAI = require('openai');
  *
  * Throws on request failures or missing API key (when client not provided).
  */
-async function generatePrompt({ theme = null, description = null, client = null, model = 'gpt-5-mini', maxOutputTokens = 16000 } = {}) {
+async function generatePrompt({ theme = null, description = null, client = null, model = 'gpt-5-mini', maxOutputTokens = 16000, style = null } = {}) {
   if (!client) {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY not set. Provide a client or set OPENAI_API_KEY in the environment.');
@@ -34,11 +34,15 @@ async function generatePrompt({ theme = null, description = null, client = null,
     additionalProperties: false
   };
 
+  // Determine style-specific prompt prefix (default to illustration)
+  const stylePrefix = (style && /写実/.test(style)) ? 'photorealistic' : 'illustration';
+  const promptStart = `masterpiece, best quality, ${stylePrefix},`;
+
   const systemMessage = `
 あなたはAI画像生成サービス「SeaArt.ai」を使いこなすプロのイラストレーターまたは写真家です。
 出力は必ずJSONで、スキーマに従ってください（keys: title_jp, description_jp, prompt_en）。
 title_jp は日本語で50文字以内、description_jp は日本語で150文字以内にまとめてください。
-prompt_en は英語で出力し、必ず先頭に "masterpiece, best quality, photorealistic," を挿入し、カンマ区切りで背景、構図、ライティング、カメラ設定（写実的指定時）などを詳細に書いてください。
+prompt_en は英語で出力し、必ず先頭に "${promptStart}" を挿入し、カンマ区切りで背景、構図、ライティング、カメラ設定（写実的指定時）などを詳細に書いてください。
 アスペクト比の指定がない場合は aspect ratio 2:3 を想定して prompt_en に含めてください。
 必ず追加のプロパティを出力しないでください。
 `;

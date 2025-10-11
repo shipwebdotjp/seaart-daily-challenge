@@ -5,6 +5,7 @@ const { fetchTheme } = require('./get-theme');
 const { generatePrompt } = require('./get-prompt');
 const { generateImage } = require('./generate-image');
 const { publishImage } = require('./publish-image');
+const sites = require('./sites');
 
 (async () => {
   if (!process.env.OPENAI_API_KEY) {
@@ -19,40 +20,56 @@ const { publishImage } = require('./publish-image');
     // Connect to remote Chrome (do not close the Chrome instance; we'll disconnect)
     browser = await puppeteer.connect({ browserURL });
 
-    // Pages to process
-    const urls = [
-      'https://www.seaart.ai/ja/event-center/daily',
-      'https://www.seaart.ai/ja/event-center/realistic/'
-    ];
+    // Sites to process (loaded from src/sites.js)
+    // Each site: { id, name, style, themeUrl, imageUrl, promptModel? }
+    const sitesList = Array.isArray(sites) ? sites : [];
 
     // Create OpenAI client once
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const results = [];
 
-    for (const pageUrl of urls) {
-      // Fetch theme/description for this page (pass browser so it won't disconnect)
+    for (const site of sitesList) {
+      const pageUrl = site.themeUrl;
+      const imagePageUrl = site.imageUrl;
+      console.log(`Processing site ${site.id || site.name}: themeUrl=${pageUrl}, imageUrl=${imagePageUrl}, style=${site.style}`);
+
+      // Fetch theme/description for this site (pass browser so it won't disconnect)
       const { theme, description, debug } = await fetchTheme(pageUrl, { browser });
       console.log(`Fetched theme/description for ${pageUrl}:`, { theme, description });
-      
+
       if (!theme) {
-        console.warn(`No theme found for ${pageUrl}, skipping.`);
+        console.warn(`No theme found for ${pageUrl} (site=${site.id || site.name}), skipping.`);
         continue;
       }
-      // Generate prompt/result using OpenAI
-      const generated = await generatePrompt({ theme, description, client });
-      console.log('Generated prompt/result:', generated);
+
+      // Generate prompt/result using OpenAI, pass style and optional model override
+      const generated = await generatePrompt({
+        theme,
+        description,
+        client,
+        model: site.promptModel || undefined,
+        style: site.style
+      });
+      console.log('Generated prompt/result for', site.id || site.name, ':', generated);
 
       // Generate image using the dedicated module (we pass the browser so it won't disconnect)
-      const imageResult = await generateImage({ browser, prompt: generated.prompt_en });
+      let imageResult = null;
+      if (imagePageUrl) {
+        imageResult = await generateImage({ browser, pageUrl: imagePageUrl, prompt: generated.prompt_en });
+      } else {
+        console.log('No imageUrl configured for', site.id || site.name, '— skipping image generation.');
+      }
 
       if (imageResult && imageResult.dataId) {
-        // Publish the image using the dedicated module
-        const publishResult = await publishImage(pageUrl, imageResult.dataId, generated.title_jp, generated.description_jp, { client });
+        // Publish the image using the dedicated module (use theme/post URL for publishing)
+        const publishResult = await publishImage(pageUrl, imageResult.dataId, generated.title_jp, generated.description_jp, { client, browser });
         imageResult.publishResult = publishResult;
       }
 
       results.push({
+        siteId: site.id,
+        siteName: site.name,
         pageUrl,
         result: { theme, description },
         generated,
