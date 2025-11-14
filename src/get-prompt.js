@@ -23,16 +23,16 @@ async function generatePrompt({ theme = null, description = null, client = null,
     client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
-  const schema = {
-    type: "object",
-    properties: {
-      title_jp: { type: "string", description: "作品タイトル（日本語・50文字以内）ありきたりのものではなく、独自性や創造性を重視してください。" },
-      description_jp: { type: "string", description: "作品解説（日本語・150文字以内）単なる作品の解説ではなく、何をイメージして作成したのか、内面的な描写や自分が特にこだわった部分を含めてください。" },
-      prompt_en: { type: "string", description: "SeaArt 用 英語プロンプト（先頭に \"masterpiece, best quality,\" を含む）" }
-    },
-    required: ["title_jp","description_jp","prompt_en"],
-    additionalProperties: false
-  };
+  // const schema = {
+  //   type: "object",
+  //   properties: {
+  //     title_jp: { type: "string", description: "作品タイトル（日本語・50文字以内）ありきたりのものではなく、独自性や創造性を重視してください。" },
+  //     description_jp: { type: "string", description: "作品解説（日本語・150文字以内）単なる作品の解説ではなく、何をイメージして作成したのか、内面的な描写や自分が特にこだわった部分を含めてください。" },
+  //     prompt_en: { type: "string", description: "SeaArt 用 英語プロンプト（先頭に \"masterpiece, best quality,\" を含む）" }
+  //   },
+  //   required: ["title_jp","description_jp","prompt_en"],
+  //   additionalProperties: false
+  // };
 
   // Determine style-specific prompt prefix (default to illustration)
   const stylePrefix = (style && /写実/.test(style)) ? 'photorealistic' : 'illustration';
@@ -41,8 +41,9 @@ async function generatePrompt({ theme = null, description = null, client = null,
   const systemMessage = `
 あなたはAI画像生成サービス「SeaArt.ai」を使いこなすプロのイラストレーターまたは写真家です。
 出力は必ずJSONで、スキーマに従ってください（keys: title_jp, description_jp, prompt_en）。
-title_jp は日本語で50文字以内、description_jp は日本語で150文字以内にまとめてください。
-prompt_en は英語で出力し、必ず先頭に "${promptStart}" を挿入し、カンマ区切りで背景、構図、ライティング、カメラ設定（写実的指定時）などを詳細に書いてください。
+- title_jp: 作品タイトル（日本語・50文字以内）ありきたりのものではなく、テーマや説明を自分なりに解釈し、再構成してください。その際、独自性や創造性を最大限に重視してください。
+- description_jp: 作品解説（日本語・150文字以内）単なる作品の解説ではなく、何をイメージして作成したのか、内面的な描写や自分が特にこだわった部分を含めてください。
+- prompt_en: 英語で出力し、必ず先頭に "${promptStart}" を挿入し、カンマ区切りで背景、構図、ライティング、カメラ設定（写実的指定時）などを詳細に書いてください。
 アスペクト比の指定がない場合は aspect ratio 2:3 を想定して prompt_en に含めてください。
 必ず追加のプロパティを出力しないでください。
 `;

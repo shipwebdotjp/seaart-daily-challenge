@@ -148,16 +148,29 @@ async function publishImage(pageUrl, imageId, title, description, opts = {}) {
         }else{
             console.log('タイトル入力欄が見つかりません。');
         }
-        const desc_input = await page.$('.publish-work .el-form-item__content > .el-textarea .el-textarea__inner');
+        // const desc_input = await page.$('.publish-work .el-form-item__content > .el-textarea .el-textarea__inner');
+        // if (desc_input) {
+        //     try {
+        //         await page.focus('.publish-work .el-form-item__content > .el-textarea .el-textarea__inner').catch(() => { });
+
+        //         await sleep(500);
+        //         await page.keyboard.type(description, { delay: 20 }).catch(() => { });
+        //     } catch (e) {
+        //         // swallow
+        //     }
+        // }
+        const desc_input = await page.$('.editor-container');
         if (desc_input) {
             try {
-                await page.focus('.publish-work .el-form-item__content > .el-textarea .el-textarea__inner').catch(() => { });
+                await page.focus('.editor-container').catch(() => { });
 
                 await sleep(500);
                 await page.keyboard.type(description, { delay: 20 }).catch(() => { });
             } catch (e) {
                 // swallow
             }
+        }else{
+            console.log('説明入力欄が見つかりません。');
         }
         // click publish button
         await page.click('.publish-work .confirm-btn');

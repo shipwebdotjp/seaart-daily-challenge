@@ -40,7 +40,7 @@ async function generateImage(opts = {}) {
     }
 
     const page = await browser.pages().then(pages => pages[0] || browser.newPage());
-    await page.setViewport({ width: 1280, height: 800 });
+    await page.setViewport({ width: 1920, height: 1080 });
 
     // Helper: robustly scroll the `.scroll-wrapper` to bottom with multiple fallbacks.
     // This handles ordinary scrollTop, element.scrollIntoView, staged scrolling (for virtualized lists),
@@ -54,7 +54,7 @@ async function generateImage(opts = {}) {
           try { el.scrollTop = el.scrollHeight; } catch (e) {}
           // 2) scroll last item into view if present
           try {
-            const items = Array.from(document.querySelectorAll('.scroll-wrapper > .viewport-item'));
+            const items = Array.from(document.querySelectorAll('.scroll-wrapper > .c-easy-msg-item, .scroll-wrapper > .viewport-item'));
             if (items.length) items[items.length - 1].scrollIntoView({ block: 'end', behavior: 'auto' });
           } catch (e) {}
           // 3) staged scrolling to encourage virtualized renderers to materialize items
@@ -165,11 +165,11 @@ async function generateImage(opts = {}) {
     
     await scrollWrapperToBottom(page);
 
-    const goToBottomBtn = await page.$('.back-to-top .el-icon-caret-bottom');
-    if (goToBottomBtn) {
-      await goToBottomBtn.click();
-      sleep(1000);
-    }
+    // const goToBottomBtn = await page.$('.back-to-top .el-icon-caret-bottom');
+    // if (goToBottomBtn) {
+    //   await goToBottomBtn.click();
+    //   sleep(1000);
+    // }
 
     // Robustly wait for the input and ensure it actually has focus before typing.
     async function waitForAndEnsureFocus(selector, opts = {}) {
@@ -290,6 +290,15 @@ async function generateImage(opts = {}) {
     await waitForAndEnsureFocus('#easyGenerateInput', { perTryTimeout: 3000, maxRetries: 6, retryDelay: 300 });
     await sleep(1000);
 
+    // const upgradeDialog = await page.$('.el-dialog__wrapper');
+    // if (upgradeDialog) {
+    //   const closeBtn = await upgradeDialog.$('.el-icon-close');
+    //   if (closeBtn) {
+    //     await closeBtn.click();
+    //     sleep(1000);
+    //   }
+    // }
+
     const textarea = await page.$('#easyGenerateInput');
     if (textarea) {
       // ensure selection cleared and input prepared
@@ -387,31 +396,39 @@ async function generateImage(opts = {}) {
     await scrollWrapperToBottom(page);
     await sleep(1000);
 
-    // 1. 最後の .viewport-item を取得
-    const items = await page.$$('.scroll-wrapper > .viewport-item');
+    // 1. 最後の イメージアイテム を取得
+    const items = await page.$$('.scroll-wrapper > .c-easy-msg-item, .scroll-wrapper > .viewport-item');
     const lastItem = items[items.length - 1];
 
     if (lastItem) {
-      // 2. その子孫から目的の div を探す
-      const target = await lastItem.$('.msg-item-header-operate-bar-refresh-btn .icon-refresh-icon2');
+      for(let i=0;i<180;i++){
+        // 2. その子孫から目的の div を探す
+        const target = await lastItem.$('.msg-item-header-operate-bar-refresh-btn .icon-refresh-icon2');
 
-      if (target) {
-        // target parent
-        const parent = await target.getProperty('parentNode');
-        
-        // 3. data-id 属性を取得
-        // const dataId = await target.evaluate(el => el.getAttribute('data-id'));
-        dataId = await parent.evaluate(el => el.dataset.id); // dataset で取得もOK
-        //debug
-        // console.log('target debug:', await getElementDebug('.msg-item-header-operate-bar-refresh-btn'));
-        // console.log('取得した data-id:', dataId);
-      } else {
-        console.log('ターゲット要素が見つかりませんでした');
+        if (target) {
+          // target parent
+          const parent = await target.getProperty('parentNode');
+          
+          // 3. data-id 属性を取得
+          // const dataId = await target.evaluate(el => el.getAttribute('data-id'));
+          dataId = await parent.evaluate(el => el.dataset.id); // dataset で取得もOK
+          //debug
+          // console.log('target debug:', await getElementDebug('.msg-item-header-operate-bar-refresh-btn'));
+          // console.log('取得した data-id:', dataId);
+        } else {
+          // console.log('ターゲット要素が見つかりませんでした');
+        }
+        await sleep(1000);
+        await scrollWrapperToBottom(page);
+
+        if(dataId){
+          break;
+        }
       }
     } else {
-      console.log('最後の .viewport-item が見つかりませんでした');
+      console.log('最後の イメージアイテム が見つかりませんでした');
     }
-
+    console.log('最終的な data-id:', dataId);
     return {
       dataId
     };

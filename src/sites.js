@@ -25,5 +25,13 @@ module.exports = [
     themeUrl: 'https://www.seaart.ai/ja/event-center/realistic/',
     imageUrl: 'https://www.seaart.ai/ja/create/image?id=f8172af6747ec762bcf847bd60fdf7cd&model_ver_no=2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
     // promptModel: 'gpt-5-mini'
+  },
+  {
+    id: 'test',
+    name: 'テスト用サイト',
+    style: '写実的',
+    themeUrl: 'https://www.seaart.ai/ja/event-center/test/',
+    imageUrl: 'https://www.seaart.ai/ja/create/image?id=d30abh5e878c73flv0gg&model_ver_no=68cc5453f15be7018e34df8f9e99bf08',
+    promptModel: 'gpt-5-mini'
   }
 ];
