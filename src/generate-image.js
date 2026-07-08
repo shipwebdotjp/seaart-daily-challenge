@@ -150,7 +150,7 @@ async function generateImage(opts = {}) {
       const closeBtn = await dialog.$('.content-right-close');
       if (closeBtn) {
         await closeBtn.click();
-        sleep(1000);
+        await sleep(1000);
       }
     }
 
@@ -159,7 +159,7 @@ async function generateImage(opts = {}) {
       const closeBtn = await postDialog.$('.button-item:not(.active)');
       if (closeBtn) {
         await closeBtn.click();
-        sleep(1000);
+        await sleep(1000);
       }
     }
     
@@ -171,206 +171,62 @@ async function generateImage(opts = {}) {
     //   sleep(1000);
     // }
 
-    // Robustly wait for the input and ensure it actually has focus before typing.
-    async function waitForAndEnsureFocus(selector, opts = {}) {
-      const {
-        perTryTimeout = 3000,
-        maxRetries = 8, // 確実性を上げるためリトライ回数を増やす
-        retryDelay = 500, // リトライ遅延を少し増やす
-      } = opts;
+    await sleep(1000);
 
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Set prompt on ALL textareas in the input area. The page may show
+    // different textareas depending on the active mode (easy / hybrid /
+    // image‑upload).  Setting via the native value descriptor + events
+    // ensures the underlying Vue / Pinia store picks up the change.
+    await page.evaluate(val => {
+      const container = document.querySelector('.top-input-area');
+      if (!container) return;
+      const desc = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      );
+      container.querySelectorAll('textarea').forEach(el => {
         try {
-          await page.waitForSelector(selector, { visible: true, timeout: perTryTimeout });
+          if (desc && desc.set) desc.set.call(el, val);
+          else el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (_) {}
+      });
+    }, prompt);
 
-          // bring into view
-          await page.evaluate(sel => {
-            const e = document.querySelector(sel);
-            if (e && e.scrollIntoView) e.scrollIntoView({ block: 'center', inline: 'center' });
-          }, selector).catch(() => {});
+    await sleep(800);
 
-          // extended operability check inside page
-          const operable = await page.evaluate(sel => {
-            const el = document.querySelector(sel);
-            if (!el) return { ok: false, reason: 'not-found' };
-            const style = window.getComputedStyle(el);
-            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity || '1') === 0) {
-              return { ok: false, reason: 'not-visible' };
-            }
-            if (el.disabled || el.readOnly) return { ok: false, reason: 'disabled-or-readonly' };
-            if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return { ok: false, reason: 'aria-hidden' };
-            // additional checks for focusability
-            if (style.pointerEvents === 'none') return { ok: false, reason: 'pointer-events-none' };
-            if (parseInt(style.zIndex || '0', 10) < 0) return { ok: false, reason: 'negative-zindex' };
-            return { ok: true, contenteditable: el.isContentEditable };
-          }, selector).catch(() => ({ ok: false, reason: 'evaluate-failed' }));
+    // Verify at least one textarea received the value
+    const ok = await page.evaluate(expected => {
+      const container = document.querySelector('.top-input-area');
+      if (!container) return false;
+      return Array.from(container.querySelectorAll('textarea')).some(
+        t => (t.value || '').trim() === expected
+      );
+    }, prompt.trim());
 
-          // If not operable, wait and retry
-          if (!operable.ok) {
-            // capture debug info on last attempt
-            if (attempt === maxRetries) {
-              const dbg = await getElementDebug(selector).catch(() => null);
-              throw new Error(`Element not operable: ${operable.reason} debug=${JSON.stringify(dbg)}`);
-            }
-            await new Promise(r => setTimeout(r, retryDelay));
-            continue;
-          }
-
-          // Multiple focus attempts in sequence
-          // First: try PuppETEer's page.focus (preferred in newer versions)
+    if (!ok) {
+      console.warn('Prompt value was not applied to any textarea; retrying once.');
+      await page.evaluate(val => {
+        const container = document.querySelector('.top-input-area');
+        if (!container) return;
+        const desc = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, 'value'
+        );
+        container.querySelectorAll('textarea').forEach(el => {
           try {
-            await page.focus(selector);
-            await new Promise(r => setTimeout(r, 100)); // small pause
-          } catch (e) {}
-
-          // Second: click and dispatch events via evaluate
-          await page.evaluate(sel => {
-            const el = document.querySelector(sel);
-            if (!el) return;
-            try {
-              el.focus && el.focus();
-              // dispatch multiple events for better framework support
-              el.dispatchEvent(new Event('focus', { bubbles: true }));
-              el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-              el.dispatchEvent(new Event('click', { bubbles: true }));
-            } catch (e) {}
-          }, selector).catch(() => {});
-
-          // Third: if still not focused, try tab navigation
-          const focused1 = await page.waitForFunction(sel => {
-            const el = document.querySelector(sel);
-            if (!el) return false;
-            if (document.activeElement === el) return true;
-            if (el.contains(document.activeElement)) return true;
-            return false;
-          }, { timeout: 500 }, selector).catch(() => null);
-
-          if (!focused1) {
-            // try tab to reach this element
-            await page.keyboard.press('Tab');
-            await new Promise(r => setTimeout(r, 100));
-            const focusedAfterTab = await page.evaluate(sel => {
-              const el = document.querySelector(sel);
-              return !!el && (document.activeElement === el || el.contains(document.activeElement));
-            }, selector).catch(() => false);
-            if (focusedAfterTab) return true;
-          } else {
-            return true;
-          }
-
-          // Fallback: click at center coordinates
-          const box = await page.$eval(selector, el => {
-            const r = el.getBoundingClientRect();
-            return { x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height };
-          }).catch(() => null);
-
-          if (box) {
-            await page.mouse.click(box.x, box.y).catch(() => {});
-            await new Promise(r => setTimeout(r, 150));
-            const focused2 = await page.evaluate(sel => {
-              const el = document.querySelector(sel);
-              return !!el && (document.activeElement === el || el.contains(document.activeElement));
-            }, selector).catch(() => false);
-            if (focused2) return true;
-          }
-
-          // not focused, retry
-          await new Promise(r => setTimeout(r, retryDelay));
-        } catch (e) {
-          if (attempt === maxRetries) {
-            const dbg = await getElementDebug(selector).catch(() => null);
-            throw new Error(`Failed to focus ${selector} after ${maxRetries} attempts. lastError=${e && e.message} debug=${JSON.stringify(dbg)}`);
-          }
-          await new Promise(r => setTimeout(r, retryDelay));
-        }
-      }
-      throw new Error(`Failed to focus ${selector}`);
-    }
-    await sleep(1000);
-    await waitForAndEnsureFocus('#easyGenerateInput', { perTryTimeout: 3000, maxRetries: 6, retryDelay: 300 });
-    await sleep(1000);
-
-    // const upgradeDialog = await page.$('.el-dialog__wrapper');
-    // if (upgradeDialog) {
-    //   const closeBtn = await upgradeDialog.$('.el-icon-close');
-    //   if (closeBtn) {
-    //     await closeBtn.click();
-    //     sleep(1000);
-    //   }
-    // }
-
-    const textarea = await page.$('#easyGenerateInput');
-    if (textarea) {
-      // ensure selection cleared and input prepared
-      try {
-        // triple click to select existing content then clear
-        await page.click('#easyGenerateInput', { clickCount: 3 }).catch(() => {});
-        await sleep(200);
-        await page.keyboard.press('Backspace').catch(() => {});
-        await sleep(200);
-
-        // Attempt typing; if that fails, fallback to setting value directly
-        let typed = false;
-        try {
-          await page.keyboard.type(prompt, { delay: 20 });
-          typed = true;
-        } catch (e) {
-          console.warn('Typing failed, falling back to value setting:', e.message);
-          typed = false;
-        }
-
-        if (!typed) {
-          await page.evaluate((sel, val) => {
-            const el = document.querySelector(sel);
-            if (!el) return;
-            try {
-              if ('value' in el) {
-                el.value = val;
-              } else if (el.isContentEditable) {
-                el.innerText = val;
-              }
-              // dispatch multiple events to ensure reactivity in frameworks like React/Vue
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-              el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-              el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-            } catch (e) {}
-          }, '#easyGenerateInput', prompt);
-        }
-
-        // Verify that the input was set correctly
-        await sleep(500); // allow time for events to propagate
-        const inputValue = await page.evaluate(sel => {
-          const el = document.querySelector(sel);
-          return el ? (el.value || el.innerText || '').trim() : '';
-        }, '#easyGenerateInput');
-
-        if (inputValue !== prompt.trim()) {
-          console.warn(`Input verification failed. Expected: "${prompt}", Got: "${inputValue}"`);
-          // Retry set value once more
-          await page.evaluate((sel, val) => {
-            const el = document.querySelector(sel);
-            if (!el) return;
-            try {
-              if ('value' in el) el.value = val;
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-            } catch (e) {}
-          }, '#easyGenerateInput', prompt);
-          await sleep(200); // wait after retry
-        } else {
-          console.log('Input value verified successfully.');
-        }
-      } catch (e) {
-        // capture debug info but continue to attempt generate
-        const afterDebug = await getElementDebug('#easyGenerateInput').catch(() => null);
-        console.error('Input set error debug:', afterDebug);
-      }
-
-      const afterDebug = await getElementDebug('#easyGenerateInput').catch(() => null);
-      // console.log('afterDebug:', JSON.stringify(afterDebug, null, 2));
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            // Additional events that Vue may listen to
+            el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+            el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+          } catch (_) {}
+        });
+      }, prompt);
+      await sleep(500);
     } else {
-      throw new Error('Prompt textarea not found on the page.');
+      console.log('Prompt value applied successfully.');
     }
 
       // finde button id=generate-btn and click it
@@ -396,8 +252,9 @@ async function generateImage(opts = {}) {
     await scrollWrapperToBottom(page);
     await sleep(1000);
 
-    // 1. 最後の イメージアイテム を取得
-    const items = await page.$$('.scroll-wrapper > .c-easy-msg-item, .scroll-wrapper > .viewport-item');
+    // 1. 最後の イメージアイテム を取得 (note: items are in a virtual list,
+    //    not direct children of .scroll-wrapper).
+    const items = await page.$$('.scroll-wrapper .c-easy-msg-item');
     const lastItem = items[items.length - 1];
 
     if (lastItem) {
@@ -406,17 +263,8 @@ async function generateImage(opts = {}) {
         const target = await lastItem.$('.msg-item-header-operate-bar-refresh-btn .icon-refresh-icon2');
 
         if (target) {
-          // target parent
-          const parent = await target.getProperty('parentNode');
-          
-          // 3. data-id 属性を取得
-          // const dataId = await target.evaluate(el => el.getAttribute('data-id'));
-          dataId = await parent.evaluate(el => el.dataset.id); // dataset で取得もOK
-          //debug
-          // console.log('target debug:', await getElementDebug('.msg-item-header-operate-bar-refresh-btn'));
-          // console.log('取得した data-id:', dataId);
-        } else {
-          // console.log('ターゲット要素が見つかりませんでした');
+          // 3. data-vl-id を .c-easy-msg-item から取得
+          dataId = await lastItem.evaluate(el => el.getAttribute('data-vl-id'));
         }
         await sleep(1000);
         await scrollWrapperToBottom(page);
