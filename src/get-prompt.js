@@ -7,7 +7,7 @@ const OpenAI = require('openai');
  *  - theme: string | null
  *  - description: string | null
  *  - client: an existing OpenAI client instance (optional). If not provided, will construct one from OPENAI_API_KEY.
- *  - model: model name (default: 'gpt-5')
+ *  - model: model name (default: 'gpt-5.4-mini')
  *  - maxOutputTokens: maximum tokens for the response (default: 16000)
  *
  * Returns:
@@ -15,7 +15,7 @@ const OpenAI = require('openai');
  *
  * Throws on request failures or missing API key (when client not provided).
  */
-async function generatePrompt({ theme = null, description = null, client = null, model = 'gpt-5-mini', maxOutputTokens = 16000, style = null } = {}) {
+async function generatePrompt({ theme = null, description = null, client = null, model = 'gpt-5.4-mini', maxOutputTokens = 16000, style = null } = {}) {
   if (!client) {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY not set. Provide a client or set OPENAI_API_KEY in the environment.');

@@ -24,12 +24,46 @@ const sites = require('./sites');
     // Each site: { id, name, style, themeUrl, imageUrl, promptModel? }
     const sitesList = Array.isArray(sites) ? sites : [];
 
+    // Parse --site argument (accepts numeric 1-based index or site id/name)
+    const argv = process.argv.slice(2);
+    let siteArgValue;
+    for (const a of argv) {
+      if (a.startsWith('--site=')) {
+        siteArgValue = a.split('=')[1];
+        break;
+      }
+    }
+    if (!siteArgValue) {
+      const idx = argv.indexOf('--site');
+      if (idx !== -1 && idx + 1 < argv.length) siteArgValue = argv[idx + 1];
+    }
+
+    let sitesToProcess = sitesList;
+    if (siteArgValue) {
+      const n = Number(siteArgValue);
+      if (!Number.isNaN(n) && Number.isInteger(n)) {
+        const i = n - 1;
+        if (i < 0 || i >= sitesList.length) {
+          console.error(`Invalid --site index: ${siteArgValue}. Valid range: 1-${sitesList.length}`);
+          process.exit(1);
+        }
+        sitesToProcess = [sitesList[i]];
+      } else {
+        const match = sitesList.find(s => s.id === siteArgValue || s.name === siteArgValue);
+        if (!match) {
+          console.error(`No site found for --site ${siteArgValue}`);
+          process.exit(1);
+        }
+        sitesToProcess = [match];
+      }
+    }
+
     // Create OpenAI client once
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const results = [];
 
-    for (const site of sitesList) {
+    for (const site of sitesToProcess) {
       const pageUrl = site.themeUrl;
       const imagePageUrl = site.imageUrl;
       console.log(`Processing site ${site.id || site.name}: themeUrl=${pageUrl}, imageUrl=${imagePageUrl}, style=${site.style}`);
