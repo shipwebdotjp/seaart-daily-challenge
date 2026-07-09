@@ -7,8 +7,8 @@ const puppeteer = require('puppeteer-core');
  *  - browser: an existing puppeteer Browser instance (optional). If provided, this function will NOT disconnect it.
  *  - browserURL: remote debugging URL to connect when `browser` not provided (default: 'http://127.0.0.1:9222')
  *  - pageUrl: page to navigate to (default: 'https://www.seaart.ai/ja/event-center/daily')
- *  - timeout: navigation timeout in ms (default: 30000)
- *  - waitForRenderMs: additional wait time for client rendering in ms (default: 800)
+ *  - timeout: navigation timeout in ms (default: 60000)
+ *  - waitForRenderMs: additional wait time for client rendering in ms (default: 2000)
  *
  * Returns:
  *  { theme: string | null, description: string | null, debug?: { themeSpanDebug, descriptionDebug } }
@@ -20,7 +20,7 @@ async function generateImage(opts = {}) {
     browser: providedBrowser = null,
     browserURL = 'http://127.0.0.1:9222',
     pageUrl = 'https://www.seaart.ai/ja/create/image?id=f8172af6747ec762bcf847bd60fdf7cd&model_ver_no=2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
-    timeout = 30000,
+    timeout = 60000,
     waitForRenderMs = 2000,
     prompt = 'masterpiece, best quality, a beautiful landscape, mountains, sunrise, photorealistic, detailed, vibrant colors, 2:3',
   } = opts;
