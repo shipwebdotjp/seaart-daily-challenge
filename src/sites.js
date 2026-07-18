@@ -14,16 +14,8 @@ module.exports = [
     id: 'daily',
     name: '毎日の挑戦',
     style: 'イラスト',
-    themeUrl: 'https://www.seaart.ai/ja/event-center/daily',
+    themeUrl: 'https://www.seaart.ai/ja/community-center',
     imageUrl: 'https://www.seaart.ai/ja/create/image?id=cuurgide878c73aqlcj0&model_ver_no=c9090ffbe5649de2f34cfe5b865d50fe',
-    // promptModel: 'gpt-5-mini'
-  },
-  {
-    id: 'realistic',
-    name: '写実チャレンジ',
-    style: '写実的',
-    themeUrl: 'https://www.seaart.ai/ja/event-center/realistic/',
-    imageUrl: 'https://www.seaart.ai/ja/create/image?id=f8172af6747ec762bcf847bd60fdf7cd&model_ver_no=2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
     // promptModel: 'gpt-5-mini'
   },
   {
