@@ -277,8 +277,65 @@ async function generateImage(opts = {}) {
       console.log('最後の イメージアイテム が見つかりませんでした');
     }
     console.log('最終的な data-id:', dataId);
+
+    // data-vl-id とダイアログ側の画像が紐付かなくなったため、
+    // 生成結果の画像URLも取得して返す (publish-image.js 側でURL照合に使う)
+    let imageUrls = [];
+    let imageUrl = null;
+    try {
+      if (lastItem) {
+        imageUrls = await lastItem.evaluate(el => {
+          const urls = new Set();
+          const push = v => {
+            if (typeof v !== 'string') return;
+            const s = v.trim().replace(/^["']|["']$/g, '');
+            if (!s || s.startsWith('data:') || s.startsWith('blob:')) return;
+            if (!/^https?:\/\//.test(s)) return;
+            urls.add(s);
+          };
+          // <img> / data-src / srcset
+          el.querySelectorAll('img').forEach(img => {
+            push(img.currentSrc || img.src);
+            push(img.getAttribute('data-src'));
+            push(img.getAttribute('data-original'));
+            const srcset = img.getAttribute('srcset');
+            if (srcset) {
+              srcset.split(',').forEach(part => push(part.trim().split(/\s+/)[0]));
+            }
+          });
+          // <video> poster / <source>
+          el.querySelectorAll('video').forEach(v => {
+            push(v.poster);
+            push(v.currentSrc || v.src);
+          });
+          el.querySelectorAll('source').forEach(s => push(s.src || s.getAttribute('srcset')));
+          // 自分自身 + 子孫の background-image
+          const nodes = [el, ...el.querySelectorAll('*')];
+          for (const n of nodes) {
+            try {
+              const bg = window.getComputedStyle(n).backgroundImage;
+              if (!bg || bg === 'none') continue;
+              const re = /url\(["']?(.*?)["']?\)/g;
+              let m;
+              while ((m = re.exec(bg)) !== null) push(m[1]);
+            } catch (_) {}
+          }
+          return [...urls];
+        });
+        // CDN画像を優先 (seaart.me)。なければ http 全体から先頭を使う
+        const cdnUrls = imageUrls.filter(u => u.includes('seaart.me'));
+        imageUrl = (cdnUrls.length > 0 ? cdnUrls : imageUrls)[0] || null;
+        console.log('生成画像URL候補:', imageUrls);
+        console.log('生成画像URL(代表):', imageUrl);
+      }
+    } catch (e) {
+      console.log('生成画像URLの取得に失敗:', e.message);
+    }
+
     return {
-      dataId
+      dataId,
+      imageUrl,
+      imageUrls
     };
   } catch (err) {
     // Propagate error to caller to decide how to handle

@@ -17,13 +17,14 @@ module.exports = [
     themeUrl: 'https://www.seaart.ai/ja/community-center',
     imageUrl: 'https://www.seaart.ai/ja/create/image?id=cuurgide878c73aqlcj0&model_ver_no=c9090ffbe5649de2f34cfe5b865d50fe',
     // promptModel: 'gpt-5-mini'
-  },
-  {
-    id: 'test',
-    name: 'テスト用サイト',
-    style: '写実的',
-    themeUrl: 'https://www.seaart.ai/ja/event-center/test/',
-    imageUrl: 'https://www.seaart.ai/ja/create/image?id=d30abh5e878c73flv0gg&model_ver_no=68cc5453f15be7018e34df8f9e99bf08',
-    promptModel: 'gpt-5-mini'
   }
+  // ,
+  // {
+  //   id: 'test',
+  //   name: 'テスト用サイト',
+  //   style: '写実的',
+  //   themeUrl: 'https://www.seaart.ai/ja/event-center/test/',
+  //   imageUrl: 'https://www.seaart.ai/ja/create/image?id=d30abh5e878c73flv0gg&model_ver_no=68cc5453f15be7018e34df8f9e99bf08',
+  //   promptModel: 'gpt-5-mini'
+  // }
 ];

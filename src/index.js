@@ -95,9 +95,17 @@ const sites = require('./sites');
         console.log('No imageUrl configured for', site.id || site.name, '— skipping image generation.');
       }
 
-      if (imageResult && imageResult.dataId) {
+      if (imageResult && (imageResult.imageUrl || (imageResult.imageUrls && imageResult.imageUrls.length) || imageResult.dataId)) {
         // Publish the image using the dedicated module (use theme/post URL for publishing)
-        const publishResult = await publishImage(pageUrl, imageResult.dataId, generated.title_jp, generated.description_jp, { client, browser });
+        // URLベースで特定する (data-vl-id はダイアログ側に付番されなくなったため)
+        const identifier = imageResult.imageUrl || imageResult.dataId;
+        const publishResult = await publishImage(pageUrl, identifier, generated.title_jp, generated.description_jp, {
+          client,
+          browser,
+          imageUrl: imageResult.imageUrl,
+          imageUrls: imageResult.imageUrls,
+          imageId: imageResult.dataId,
+        });
         imageResult.publishResult = publishResult;
       }
 
