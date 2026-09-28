@@ -29,13 +29,22 @@ async function publishImage(pageUrl, imageId, title, description, opts = {}) {
 
         await new Promise(resolve => setTimeout(resolve, waitForRenderMs));
 
-        // 1. go-submit-btn をクリックして投稿モーダルを開く
+        // 1. go-submit-btn をクリックしてドロップダウンを開く
+        await page.waitForSelector('.go-submit-btn', { visible: true, timeout: 5000 });
+        await page.click('.go-submit-btn');
+        await sleep(500);
+
+        // 2. ドロップダウン内の最初のButtonをクリックして投稿モーダルを開く
         let modalOpened = false;
         const maxRetries = 3;
         for (let i = 0; i < maxRetries; i++) {
             try {
-                await page.waitForSelector('.go-submit-btn', { visible: true, timeout: 5000 });
-                await page.click('.go-submit-btn');
+                await page.waitForSelector('.submit-dropdown button', { visible: true, timeout: 5000 });
+                const buttons = await page.$$('.submit-dropdown button');
+                if (buttons.length === 0) {
+                    throw new Error('.submit-dropdown 内にボタンが見つかりません');
+                }
+                await buttons[1].click();
                 await sleep(500);
                 await page.waitForSelector('.contribution-popup', { visible: true, timeout: 5000 });
                 modalOpened = true;
